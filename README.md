@@ -99,26 +99,52 @@ These functionalities are designed to enhance the overall performance and flexib
 
 ## 🔨 Installation
 
-Run the following commands to set up the environment:
+### Prerequisites
+- Python 3.10+
+- CUDA 11.8+ compatible GPU
+- [uv](https://github.com/astral-sh/uv) - Fast Python package installer
+
+### Environment Setup
+
+This project uses **uv** for dependency management. There are two separate environments:
+
+1. **DriveStudio (main)** - For training and inference (Python 3.10, PyTorch 2.1.2+cu118)
+2. **SegFormer** - For sky mask extraction (Python 3.8, PyTorch 1.7.1+cu110)
 
 ```shell
 # Clone the repository with submodules
 git clone --recursive https://github.com/ziyc/drivestudio.git
 cd drivestudio
 
-# Create the environment
-conda create -n drivestudio python=3.9 -y
-conda activate drivestudio
-pip install -r requirements.txt
-pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.3.0
-pip install git+https://github.com/facebookresearch/pytorch3d.git
-pip install git+https://github.com/NVlabs/nvdiffrast
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Set up for SMPL Gaussians
+# Set up DriveStudio environment
+uv sync
+
+# Install additional dependencies (required)
+uv pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git
+uv pip install --no-build-isolation git+https://github.com/NVlabs/nvdiffrast
+
+# Set up for SMPL Gaussians (optional, for pedestrian modeling)
 cd third_party/smplx/
-pip install -e .
+uv pip install -e .
 cd ../..
 ```
+
+### ⚠️ Important: Always use `uv run` for execution
+
+```bash
+# ✅ Correct - Run training with uv
+uv run python tools/train.py --config_file configs/deformablegs.yaml ...
+
+# ❌ Wrong - Never use system Python directly
+python tools/train.py ...  # This will fail!
+```
+
+### SegFormer Setup (for sky mask extraction)
+
+See [docs/Waymo.md](docs/Waymo.md) for detailed SegFormer setup instructions.
 
 ## 📊 Prepare Data
 We support most popular public driving datasets. Detailed instructions for downloading and processing each dataset are available in the following documents:
@@ -137,7 +163,8 @@ export PYTHONPATH=$(pwd)
 start_timestep=0 # start frame index for training
 end_timestep=-1 # end frame index, -1 for the last frame
 
-python tools/train.py \
+# Use uv run to execute training
+uv run python tools/train.py \
     --config_file configs/omnire.yaml \
     --output_root $output_root \
     --project $project \
@@ -148,13 +175,15 @@ python tools/train.py \
     data.end_timestep=$end_timestep
 ```
 
+**Tips:**
 - To run other methods, change `--config_file`. See `configs/` for more options.
 - Specify dataset and number of cameras by setting `dataset`. Examples: `waymo/1cams`, `waymo/5cams`, `pandaset/6cams`, `argoverse/7cams`, etc.
-  You can set up arbitrary camera combinations for each dataset. See `configs/datasets/` for custom configuration details.
 - For over 3 cameras or 450+ images, we recommend using `omnire_extended_cam.yaml`. It works better in practice.
+- If you don't have SMPL human pose data, add `data.pixel_source.load_smpl=False` to skip human pose loading.
+
 ### Evaluation
 ```shell
-python tools/eval.py --resume_from $ckpt_path
+uv run python tools/eval.py --resume_from $ckpt_path
 ```
 
 <details>
@@ -167,7 +196,7 @@ for scene_idx in {0..7}; do
     IFS=',' read scene_idx seg_name start_timestep end_timestep <<< $(awk -v idx="$(($scene_idx + 2))" \
         'NR==idx {print $1, $2, $3, $4}' data/waymo_example_scenes.txt)
     
-    python tools/train.py \
+    uv run python tools/train.py \
         --config_file configs/paper_legacy/omnire.yaml \
         --output_root logs/omnire_waymo/ \
         --project recon \
@@ -185,7 +214,7 @@ for scene_idx in {0..7}; do
     IFS=',' read scene_idx seg_name start_timestep end_timestep <<< $(awk -v idx="$(($scene_idx + 2))" \
         'NR==idx {print $1, $2, $3, $4}' data/waymo_example_scenes.txt)
     
-    python tools/train.py \
+    uv run python tools/train.py \
         --config_file configs/paper_legacy/omnire.yaml \
         --output_root logs/omnire_waymo/ \
         --project nvs \
@@ -197,7 +226,7 @@ for scene_idx in {0..7}; do
 done
 ```
 
-and run `utils/gather_results.py` to get the results.
+and run `uv run python utils/gather_results.py` to get the results.
 </details>
 
 ## 👏 Contributions
