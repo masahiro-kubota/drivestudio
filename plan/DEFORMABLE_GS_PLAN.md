@@ -379,5 +379,353 @@ data.scene_idx=327  # シーン327
 
 ---
 
-**最終更新**: 2026-02-14 19:45
-**次のアクション**: トレーニング実行
+---
+
+## ✅ 実行完了（2026-02-14 21:54）
+
+### 🎉 結果サマリー
+
+**Scene 023、3カメラ、0-50フレーム（51フレーム）**
+
+| 指標 | 初期値 | 最終値 | 改善 |
+|------|--------|--------|------|
+| PSNR | 12.34 dB | **27.58 dB** | +15.24 dB |
+| SSIM | 0.5850 | **0.9173** | +0.3323 |
+| LPIPS | 0.8084 | **0.1114** | -0.6970 |
+
+**成功要因**:
+- ✅ ダミーsky masks生成で問題回避
+- ✅ マルチカメラ（3台）でステレオ視差を獲得
+- ✅ LiDAR深度情報（312万点）
+- ✅ 30,000イテレーション完了（約27分）
+
+### ⚠️ 重要な発見：自車はほぼ停止中
+
+**Scene 023の移動状況**:
+```
+総移動距離: 0.01 m (1cm)
+所要時間: 5.1秒
+平均速度: 0.0 km/h
+→ ほぼ停止中（視差なし）
+```
+
+**それでも良い結果が得られた理由**:
+1. マルチカメラによるステレオ視差
+2. LiDAR深度情報
+3. 動的オブジェクト（他の車両・歩行者）
+
+### 📈 次の実験計画
+
+より良い結果を得るため、**走行中のシーン**でトレーニングを実施する。
+
+---
+
+## 🚗 次回実験：走行中シーンでのトレーニング
+
+### 目的
+
+**視差の影響を検証**し、走行中シーンでの性能向上を確認する。
+
+### シーン選定
+
+まず、各シーンの移動距離を確認：
+
+```bash
+python scripts/analyze_scene_motion.py
+```
+
+**候補シーン**（`data/waymo_example_scenes.txt`より）:
+- Scene 114 (`seg125050`)
+- Scene 327 (`seg169514`)
+- Scene 172 (`seg138251`, frames 30-180)
+
+### 実験1：Scene 114（走行中シーン）
+
+**設定**:
+```bash
+export PYTHONPATH=$(pwd)
+source .venv/bin/activate
+
+python tools/train.py \
+    --config_file configs/deformablegs.yaml \
+    --output_root ./logs/deformgs_moving \
+    --project scene_comparison \
+    --run_name scene_114_3cams \
+    dataset=waymo/3cams \
+    data.scene_idx=114 \
+    data.start_timestep=0 \
+    data.end_timestep=50 \
+    data.pixel_source.load_smpl=false
+```
+
+**期待される結果**:
+- 視差による深度推定の改善
+- PSNR > 28 dB（scene 023より向上）
+- 動的オブジェクトの再現性向上
+
+### 実験2：5カメラ構成での比較
+
+**目的**: カメラ数の影響を検証
+
+```bash
+# Scene 114、5カメラ
+python tools/train.py \
+    --config_file configs/deformablegs.yaml \
+    --output_root ./logs/deformgs_moving \
+    --project scene_comparison \
+    --run_name scene_114_5cams \
+    dataset=waymo/5cams \
+    data.scene_idx=114 \
+    data.start_timestep=0 \
+    data.end_timestep=50 \
+    data.pixel_source.load_smpl=false
+```
+
+**比較項目**:
+| 条件 | Scene | カメラ | 期待PSNR |
+|------|-------|--------|----------|
+| ベースライン | 023（停止） | 3 | 27.58 dB |
+| 実験1 | 114（走行） | 3 | > 28 dB |
+| 実験2 | 114（走行） | 5 | > 29 dB |
+
+### 実験3：フルシーケンス（199フレーム）
+
+**走行距離が最大化**される長いシーケンスで学習：
+
+```bash
+python tools/train.py \
+    --config_file configs/omnire_extended_cam.yaml \
+    --output_root ./logs/deformgs_full \
+    --project full_sequence \
+    --run_name scene_114_5cams_full \
+    dataset=waymo/5cams \
+    data.scene_idx=114 \
+    data.start_timestep=0 \
+    data.end_timestep=-1 \
+    data.pixel_source.load_smpl=false
+```
+
+**注意**: 画像数が多い（199×5=995枚）ため、`omnire_extended_cam.yaml`を使用。
+
+### データ準備スクリプト
+
+各シーンの移動距離を確認するスクリプトを作成：
+
+```bash
+# scripts/analyze_scene_motion.py
+python3 << 'EOF'
+import numpy as np
+import os
+
+scenes = [23, 114, 172, 327, 552, 621, 703, 788]
+results = []
+
+for scene_idx in scenes:
+    scene_dir = f'data/waymo/processed/training/{scene_idx:03d}'
+    if not os.path.exists(f'{scene_dir}/ego_pose'):
+        continue
+
+    # 最初の50フレームの移動距離を計算
+    poses = []
+    for i in range(min(51, len(os.listdir(f'{scene_dir}/ego_pose')))):
+        pose = np.loadtxt(f'{scene_dir}/ego_pose/{i:03d}.txt')
+        poses.append(pose[:3, 3])
+
+    if len(poses) < 2:
+        continue
+
+    poses = np.array(poses)
+    distances = np.linalg.norm(np.diff(poses, axis=0), axis=1)
+    total_dist = np.sum(distances)
+    avg_speed = total_dist / (len(poses) / 10) if len(poses) > 1 else 0
+
+    results.append({
+        'scene': scene_idx,
+        'frames': len(poses),
+        'distance': total_dist,
+        'speed_ms': avg_speed,
+        'speed_kmh': avg_speed * 3.6
+    })
+
+# ソートして表示
+results.sort(key=lambda x: x['distance'], reverse=True)
+
+print("シーン別移動距離（0-50フレーム）:")
+print("-" * 70)
+print(f"{'Scene':<8} {'Frames':<8} {'Distance(m)':<15} {'Speed(km/h)':<12} {'推奨'}")
+print("-" * 70)
+
+for r in results:
+    recommend = "✅ 推奨" if r['distance'] > 10 else ("⚠️  低速" if r['distance'] > 1 else "❌ 停止")
+    print(f"{r['scene']:<8} {r['frames']:<8} {r['distance']:<15.2f} {r['speed_kmh']:<12.1f} {recommend}")
+EOF
+```
+
+### 評価と比較
+
+すべての実験完了後：
+
+```bash
+# 結果を収集
+python utils/gather_results.py \
+    --log_dirs logs/test_deformgs/first_test/scene_23_3cams \
+                logs/deformgs_moving/scene_comparison/scene_114_3cams \
+                logs/deformgs_moving/scene_comparison/scene_114_5cams
+```
+
+**分析ポイント**:
+1. 視差の有無による性能差
+2. カメラ数の影響
+3. シーケンス長の影響
+4. 動的オブジェクトの再現品質
+
+---
+
+## 📦 追加機能：PLYエクスポート（時系列対応）
+
+### PLYと動的シーンの関係
+
+**重要な理解**:
+
+PLYファイルは**静的**ですが、Deformable-GSでは**時刻ごとに異なるPLY**を生成できます。
+
+```
+基本Gaussians (canonical space)
+       ↓
+   [時刻 t=0]  → Deformation Network → PLY (t=0)
+   [時刻 t=25] → Deformation Network → PLY (t=25)
+   [時刻 t=50] → Deformation Network → PLY (t=50)
+```
+
+**動的な動きの仕組み**:
+
+1. **Canonical Gaussians**（基準となるGaussian配置）
+   - チェックポイントに保存されている基本位置
+
+2. **Deformation Network**（変形ネットワーク）
+   - 入力: (Gaussian位置, 時刻t)
+   - 出力: 変形後の位置・回転・スケール
+
+3. **時刻tでのPLY**
+   ```python
+   # 時刻tでの変形を適用
+   deformed_positions = canonical_positions + deformation(t)
+   deformed_rotations = canonical_rotations * deformation_rot(t)
+   ```
+
+### 実装タスク
+
+#### タスク1: 時系列PLYエクスポートスクリプト
+
+```bash
+# scripts/export_ply_sequence.py
+python scripts/export_ply_sequence.py \
+    --checkpoint logs/test_deformgs/first_test/scene_23_3cams/checkpoint_final.pth \
+    --output_dir scene_23_ply \
+    --timesteps 0,10,20,30,40,50
+```
+
+**生成されるファイル**:
+```
+scene_23_ply/
+├── frame_000.ply  # 時刻 t=0
+├── frame_010.ply  # 時刻 t=10
+├── frame_020.ply  # 時刻 t=20
+...
+└── frame_050.ply  # 時刻 t=50
+```
+
+#### タスク2: アニメーション確認
+
+**方法1: 個別フレーム表示**
+```bash
+# 各時刻のPLYを個別に開く
+meshlab scene_23_ply/frame_000.ply
+meshlab scene_23_ply/frame_025.ply
+meshlab scene_23_ply/frame_050.ply
+```
+
+**方法2: アニメーション動画生成**
+```python
+# scripts/render_ply_sequence.py
+# 各PLYをレンダリング → 動画化
+```
+
+### 動的オブジェクトの確認方法
+
+**車両の動き**:
+- Frame 0とFrame 50のPLYを並べて比較
+- 車両を表すGaussianクラスタの位置が変化
+
+**歩行者の動き**:
+- Deformable Gaussiansにより滑らかに変形
+- 姿勢変化もGaussianの配置で表現
+
+### 実装の詳細（時系列対応）
+
+```python
+import torch
+from models.trainers.single import SingleTrainer
+
+def export_timestep_ply(checkpoint_path, timestep, output_path):
+    """特定の時刻tのPLYをエクスポート"""
+
+    # モデル読み込み
+    ckpt = torch.load(checkpoint_path)
+
+    # Canonical Gaussians取得
+    canonical_means = ckpt['gaussians']['Background']['means']
+    canonical_quats = ckpt['gaussians']['Background']['quats']
+
+    # Deformation Network適用
+    t = torch.tensor([timestep / 50.0])  # 正規化された時刻
+    deform_net = ckpt['deform_network']
+
+    with torch.no_grad():
+        # 変形計算
+        delta_xyz, delta_rot, delta_scale = deform_net(
+            canonical_means, t.repeat(len(canonical_means), 1)
+        )
+
+        # 変形後の位置
+        deformed_means = canonical_means + delta_xyz
+        deformed_quats = canonical_quats * delta_rot
+
+    # PLYに保存
+    save_ply(output_path, deformed_means, deformed_quats, ...)
+```
+
+### 使用例
+
+```bash
+# 時刻0, 25, 50のPLYをエクスポート
+for t in 0 25 50; do
+    python scripts/export_ply.py \
+        --checkpoint logs/test_deformgs/first_test/scene_23_3cams/checkpoint_final.pth \
+        --output scene_23_t${t}.ply \
+        --timestep $t
+done
+
+# 並べて比較
+meshlab scene_23_t0.ply scene_23_t25.ply scene_23_t50.ply
+```
+
+### 期待される結果
+
+**静的要素（背景）**:
+- 建物、道路：全フレームで同じ位置
+
+**動的要素（車両・歩行者）**:
+- フレーム間で位置が変化
+- Gaussianクラスタが移動・変形
+
+### 優先度
+
+- **中**: 走行中シーン実験の後に実装
+- **用途**: 3D構造の理解、デバッグ、他ツールとの連携
+
+---
+
+**最終更新**: 2026-02-14 22:20
+**現在のステータス**: Scene 023完了、次は走行中シーン実験
+**次のアクション**: シーンの移動距離分析 → Scene 114トレーニング

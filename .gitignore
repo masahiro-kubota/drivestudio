@@ -197,3 +197,14 @@ splatad/
 # Data files
 *.tgz
 *.tar.gz
+
+# Experimental scripts
+scripts/export_sample_frames.py
+scripts/render_custom_views.py
+scripts/test_*.py
+
+# External tools
+lichtblick_gs_viewer/
+
+# Output directories
+output/
