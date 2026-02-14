@@ -10,9 +10,14 @@ from sklearn.neighbors import NearestNeighbors
 from pytorch3d.transforms import matrix_to_quaternion
 
 from gsplat.rendering import rasterization
-from gsplat.cuda_legacy._wrapper import num_sh_bases
-from gsplat.cuda_legacy._torch_impl import quat_to_rotmat
 from gsplat.cuda._wrapper import spherical_harmonics
+# gsplat 1.4.0: cuda_legacyモジュールが削除されたため、代替実装を使用
+from gsplat.utils import normalized_quat_to_rotmat as quat_to_rotmat
+
+# num_sh_bases の代替実装（gsplat 1.4.0対応）
+def num_sh_bases(degree: int) -> int:
+    """Calculate number of spherical harmonics bases for given degree"""
+    return (degree + 1) ** 2
 
 def interpolate_quats(q1, q2, fraction=0.5):
     q1 = q1 / torch.norm(q1, dim=-1, keepdim=True)
