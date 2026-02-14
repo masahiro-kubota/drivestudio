@@ -467,7 +467,7 @@ class CameraData(object):
             self.human_masks = self.human_masks.to(device)
         if self.vehicle_masks is not None:
             self.vehicle_masks = self.vehicle_masks.to(device)
-        if self.sky_masks is not None:
+        if hasattr(self, 'sky_masks') and self.sky_masks is not None:
             self.sky_masks = self.sky_masks.to(device)
         if self.lidar_depth_maps is not None:
             self.lidar_depth_maps = self.lidar_depth_maps.to(device)
@@ -529,7 +529,7 @@ class CameraData(object):
                     .squeeze(0)
                     .squeeze(0)
                 )
-        if self.sky_masks is not None:
+        if hasattr(self, 'sky_masks') and self.sky_masks is not None:
             sky_mask = self.sky_masks[frame_idx]
             if self.downscale_factor != 1.0:
                 sky_mask = (
