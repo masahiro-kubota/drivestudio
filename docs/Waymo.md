@@ -95,28 +95,31 @@ Follow these steps:
 
 #### Install `SegFormer` (Skip if already installed)
 
-:warning: SegFormer relies on `mmcv-full=1.2.7`, which relies on `pytorch=1.8` (pytorch<1.9). Hence, a seperate conda env is required.
+:warning: SegFormer relies on `mmcv-full=1.2.7`, which requires `pytorch=1.7.1` (pytorch<1.9). We use a separate uv-managed environment.
 
 ```shell
-#-- Set conda env
-conda create -n segformer python=3.8
-conda activate segformer
-# conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=11.3 -c pytorch -c conda-forge
-pip install torch==1.8.1+cu111 torchvision==0.9.1+cu111 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+# SegFormer is already included as a git submodule in this repository
+# If you cloned with --recursive, you already have it. Otherwise:
+git submodule update --init --recursive
 
-#-- Install mmcv-full
-pip install timm==0.3.2 pylint debugpy opencv-python-headless attrs ipython tqdm imageio scikit-image omegaconf
-pip install mmcv-full==1.2.7 --no-cache-dir
-
-#-- Clone and install segformer
-git clone https://github.com/NVlabs/SegFormer
+# Set up SegFormer environment with uv
 cd SegFormer
-pip install .
+uv sync  # Installs PyTorch 1.7.1+cu110, mmcv-full 1.2.7, and all dependencies
+
+# Verify installation
+uv run python -c "from mmcv.ops import bbox_overlaps; print('mmcv C++ extensions: OK')"
+cd ..
 ```
 
-Download the pretrained model `segformer.b5.1024x1024.city.160k.pth` from the google_drive / one_drive links in https://github.com/NVlabs/SegFormer#evaluation .
+Download the pretrained model `segformer.b5.1024x1024.city.160k.pth` into `SegFormer/pretrained/`:
 
-Remember the location where you download into, and pass it to the script in the next step with `--checkpoint` .
+```shell
+mkdir -p SegFormer/pretrained
+cd SegFormer/pretrained
+# Download from google_drive / one_drive links in https://github.com/NVlabs/SegFormer#evaluation
+# Or use gdown (see troubleshooting below)
+cd ../..
+```
 
 <details>
 <summary>Troubleshooting: SegFormer Checkpoint Download</summary>
@@ -128,19 +131,27 @@ If you encounter problems downloading the original SegFormer checkpoint from the
 #### Run Mask Extraction Script
 
 ```shell
-conda activate segformer
-segformer_path=/pathtosegformer
+# Run from the project root directory
+cd SegFormer
 
-python datasets/tools/extract_masks.py \
-    --data_root data/waymo/processed/training \
-    --segformer_path=$segformer_path \
-    --checkpoint=$segformer_path/pretrained/segformer.b5.1024x1024.city.160k.pth \
-    --split_file data/waymo_example_scenes.txt \
+# Extract masks for specific scenes
+uv run python ../datasets/tools/extract_masks.py \
+    --data_root ../data/waymo/processed/training \
+    --segformer_path $(pwd) \
+    --scene_ids 23 114 788 \
     --process_dynamic_mask
-```
-Replace `/pathtosegformer` with the actual path to your Segformer installation.
 
-Note: The `--process_dynamic_mask` flag is included to process fine dynamic masks along with sky masks.
+# Or extract masks for scenes listed in a split file
+uv run python ../datasets/tools/extract_masks.py \
+    --data_root ../data/waymo/processed/training \
+    --segformer_path $(pwd) \
+    --split_file ../data/waymo_example_scenes.txt \
+    --process_dynamic_mask
+
+cd ..
+```
+
+**Note:** The `--process_dynamic_mask` flag is optional and processes fine dynamic masks along with sky masks. Omit this flag if you only need sky masks.
 
 This process will extract the required masks from your processed data.
 
