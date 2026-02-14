@@ -1,0 +1,86 @@
+[project]
+name = "drivestudio"
+version = "0.1.0"
+description = "DriveStudio: 3DGS framework for autonomous driving"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    # Core PyTorch
+    "torch==2.1.2",
+    "torchvision==0.16.2",
+    "setuptools==69.5.1",
+
+    # 3D Gaussian Splatting
+    "gsplat==1.4.0",
+
+    # Deep Learning
+    "timm==0.9.5",
+    "pytorch_msssim==1.0.0",
+
+    # Configuration & Logging
+    "omegaconf==2.3.0",
+    "torchmetrics==0.10.3",
+    "tensorboard==2.11.0",
+    "wandb==0.15.8",
+
+    # Visualization
+    "matplotlib>=3.8",  # override-dependenciesで制約
+    "plotly==5.13.1",
+    "viser==0.2.1",
+    "nerfview==0.0.3",
+
+    # Image/Video Processing
+    "imageio",
+    "imageio-ffmpeg",
+    "scikit-image==0.20.0",
+    "opencv-python",
+
+    # 3D Processing
+    "open3d==0.16.0",
+    "pyquaternion==0.9.9",
+    # "chumpy",  # ビルド問題あり、別途インストール
+    "kornia==0.7.2",
+
+    # Numerical Computing
+    "numpy<2",
+    "scipy",
+    "scikit-learn",
+
+    # Utilities
+    "tqdm",
+    "gdown",
+    "lpips==0.1.4",
+]
+
+# pytorch3dとnvdiffrastは別途インストール（build-isolationの問題を回避）
+# インストール方法:
+# uv pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git
+# uv pip install --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git
+
+# setuptoolsの設定: パッケージとしてインストールしない（アプリケーション用）
+[tool.setuptools]
+py-modules = []  # Pythonモジュールなし
+
+# PyTorch CUDA 11.8用のインデックス
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+# gsplat用のインデックス（Phase 2）
+[[tool.uv.index]]
+name = "gsplat-whl"
+url = "https://docs.gsplat.studio/whl/pt21cu118"
+explicit = true
+
+# パッケージソースの指定
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchvision = { index = "pytorch-cu118" }
+gsplat = { index = "gsplat-whl" }
+
+# グローバル制約
+[tool.uv]
+override-dependencies = [
+    "numpy<2",  # numpy 2.x との互換性問題を回避
+]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
