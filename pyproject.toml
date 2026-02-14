@@ -78,6 +78,9 @@ torch = { index = "pytorch-cu118" }
 torchvision = { index = "pytorch-cu118" }
 gsplat = { index = "gsplat-whl" }
 
+[tool.uv.workspace]
+members = []  # SegFormerは独立した環境として管理
+
 # グローバル制約
 [tool.uv]
 override-dependencies = [
